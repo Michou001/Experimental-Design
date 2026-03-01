@@ -1,0 +1,78 @@
+#EXPERIMENTAL DESIGN
+#PRACTICA 1 - IDENTIFICACIÓN DE FUENTES DE VARIACIÓN (VARIANTE: MEDIOS LÍQUIDOS)
+#DESARROLLADO POR:
+#MELISSA VELASCO OSEGUERA
+#KEVIN OSVALDO GUTIERREZ
+#FERNANDA MICHELLE LARA ORAN
+#MICHEL GONZALEZ BECERRIL
+
+import serial
+import time
+import csv
+import numpy as np
+
+# --- CONFIGURACIÓN GENERAL DEL MUESTREO ---
+PUERTO = 'COM6' # Cambia esto por tu puerto COM real
+BAUD_RATE = 9600
+MUESTRAS = 10
+
+def capturar_datos(nombre_fase):
+    print(f"\n--- Iniciando captura para: {nombre_fase} ---")
+    datos = []
+    
+    try:
+        with serial.Serial(PUERTO, BAUD_RATE, timeout=2) as ser:
+            time.sleep(2) # Pausa para estabilizar la comunicación
+            ser.reset_input_buffer() 
+            
+            print("Capturando datos (1 lectura por segundo)...")
+            
+            while len(datos) < MUESTRAS:
+                if ser.in_waiting > 0:
+                    linea = ser.readline().decode('utf-8').strip()
+                    try:
+                        temp = float(linea)
+                        datos.append(temp)
+                        print(f"Muestra {len(datos)}/{MUESTRAS}: {temp} °C")
+                    except ValueError:
+                        pass # Ignora basura en el puerto serial
+                        
+    except serial.SerialException:
+        print(f"Error: No se pudo abrir el puerto {PUERTO}. Cierra el Monitor Serial de Arduino.")
+        return None
+        
+    media = np.mean(datos)
+    varianza = np.var(datos, ddof=1)
+    print(f"-> Estadísticas {nombre_fase} | Media: {media:.2f} °C | Varianza: {varianza:.4f}")
+    
+    return datos
+
+if __name__ == '__main__':
+    print("Práctica: Identificación de Fuentes de Variación (Variante: Medios Líquidos)")
+    
+    input("\nSumerge el sensor en AGUA FRÍA y presiona ENTER para iniciar...")
+    datos_fria = capturar_datos("Agua Fría")
+    
+    input("\nSumerge el sensor en AGUA TIBIA, deja que se estabilice unos segundos y presiona ENTER...")
+    datos_tibia = capturar_datos("Agua Tibia")
+    
+    input("\nSumerge el sensor en AGUA CALIENTE, deja que se estabilice y presiona ENTER...")
+    datos_caliente = capturar_datos("Agua Caliente")
+    
+    # --- EXPORTACIÓN A CSV ---
+    if datos_fria and datos_tibia and datos_caliente:
+        nombre_archivo = "mediciones_agua.csv"
+        
+        with open(nombre_archivo, mode='w', newline='') as archivo_csv:
+            escritor = csv.writer(archivo_csv)
+            
+            # Escribimos los encabezados de las columnas
+            escritor.writerow(['Muestra', 'Agua Fria (C)', 'Agua Tibia (C)', 'Agua Caliente (C)'])
+            
+            # Escribimos los datos fila por fila
+            for i in range(MUESTRAS):
+                escritor.writerow([i+1, datos_fria[i], datos_tibia[i], datos_caliente[i]])
+                
+        print(f"\n¡Proceso terminado exitosamente! Tus datos están guardados en el archivo: {nombre_archivo}")
+    else:
+        print("\nHubo un error en la captura de alguna de las fases. No se pudo generar el CSV.")
