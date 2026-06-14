@@ -1,0 +1,90 @@
+#include <DHT.h>
+
+// Configuración de Hardware
+#define DHTPIN 2      // Pin de datos del DHT22
+#define DHTTYPE DHT22 // Tipo de sensor
+#define RELAY_FAN_1 3 // Relay Ventilador 1
+#define RELAY_FAN_2 4 // Relay Ventilador 2
+#define RELAY_FOCO 5  // Relay Foco Incandescente
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// Variables de control
+float temperaturaActual = 0.0;
+float humedadActual = 0.0;
+float setpointTemperatura = 35.0; // Cambia esto para cada experimento (tu variable independiente)
+
+// Variables para control de tiempo (sin usar delay para no bloquear el ESP32)
+unsigned long tiempoAnterior = 0;
+const long intervalo = 2000; // Leer cada 2 segundos (el DHT22 es lento)
+
+void setup() {
+  Serial.begin(115200); // Velocidad de comunicación
+  
+  // Configuración de pines de salida
+  pinMode(RELAY_FOCO, OUTPUT);
+  pinMode(RELAY_FAN_1, OUTPUT);
+  pinMode(RELAY_FAN_2, OUTPUT);
+  
+  // ESTADO INICIAL: Todo apagado (Lógica Invertida: HIGH = Apagado, LOW = Prendido)
+  digitalWrite(RELAY_FOCO, HIGH);
+  digitalWrite(RELAY_FAN_1, HIGH);
+  digitalWrite(RELAY_FAN_2, HIGH);
+
+  dht.begin();
+  
+  // Imprimir los encabezados de las columnas para nuestro archivo
+  Serial.println("Tiempo(ms),Temperatura(C),Humedad(%),EstadoFoco,EstadoVentiladores");
+}
+
+void loop() {
+  unsigned long tiempoActual = millis();
+
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+
+    humedadActual = dht.readHumidity();
+    temperaturaActual = dht.readTemperature();
+
+    if (isnan(humedadActual) || isnan(temperaturaActual)) {
+      Serial.println("Error leyendo el DHT22");
+      return;
+    }
+
+    // Variables para registrar el estado de los actuadores (1 = Prendido, 0 = Apagado)
+    int focoPrendido = 0;
+    int ventiladoresPrendidos = 0;
+
+    // Lógica de control Bang-Bang (On/Off)
+    if (temperaturaActual < setpointTemperatura - 0.5) {
+      // Hace frío: Prender foco, apagar ventiladores
+      digitalWrite(RELAY_FOCO, LOW);  
+      digitalWrite(RELAY_FAN_1, HIGH);
+      digitalWrite(RELAY_FAN_2, HIGH);
+      focoPrendido = 1;
+    } 
+    else if (temperaturaActual > setpointTemperatura + 0.5) {
+      // Hace calor: Apagar foco, prender ventiladores
+      digitalWrite(RELAY_FOCO, HIGH);
+      digitalWrite(RELAY_FAN_1, LOW);
+      digitalWrite(RELAY_FAN_2, LOW);
+      ventiladoresPrendidos = 1;
+    } else {
+      // En el rango ideal: Todo apagado
+      digitalWrite(RELAY_FOCO, HIGH);
+      digitalWrite(RELAY_FAN_1, HIGH);
+      digitalWrite(RELAY_FAN_2, HIGH);
+    }
+
+    // Enviar datos por Serial en formato CSV
+    Serial.print(tiempoActual);
+    Serial.print(",");
+    Serial.print(temperaturaActual);
+    Serial.print(",");
+    Serial.print(humedadActual);
+    Serial.print(",");
+    Serial.print(focoPrendido);
+    Serial.print(",");
+    Serial.println(ventiladoresPrendidos);
+  }
+}
